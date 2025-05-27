@@ -4,8 +4,8 @@
   "description": "SR",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/src/index.js",
-    "start:local": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "start": "node dist/src/api/index.js",
+    "start:local": "nodemon --watch src --ext ts --exec ts-node src/api/index.ts",
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run --coverage"
   },
