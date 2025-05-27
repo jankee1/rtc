@@ -1,3 +1,3 @@
 export class MysteriousCrawlerMappingsDto {
-    mappings: string
-}   
+    mappings: string;
+}
