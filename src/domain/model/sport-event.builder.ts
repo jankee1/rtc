@@ -37,11 +37,15 @@ export class SportEventBuilder {
         for(const rawScore of rawScores) {
             const score = new ScoreModel();
 
-            const [id, home, away, period] = this.validateScoreProperties(rawScore);
+            const result = this.validateScoreProperties(rawScore);
 
             if (!this.isValid()) {
                 return;
+            } else if (!result.length) {
+                continue;
             }
+
+            const [id, home, away, period] = result;
 
             score.homeScore = home;
             score.awayScore = away;
@@ -88,6 +92,10 @@ export class SportEventBuilder {
     }
 
     private validateScoreProperties(raw: string): string[] {
+        if(this.sportModel.sportEventStatus === EventStatusEnum.PRE) {
+            return [];
+        }
+
         const [id, rawScore] = raw.split('@');
         const [home, away] = rawScore.split(':');
         const period = this.mapping[id];
