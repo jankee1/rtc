@@ -6,8 +6,10 @@ import { parseMappings, sleep } from "./utils";
 import { ArrayOps, contextId, logger } from "../common";
 import { SportEventModel } from "../domain/model";
 import { MysteriousCrawlerRawModel } from "./model";
+import { sportEventRepository } from "../domain/store";
 
 export class MysteriousCrawlerConsumer {
+  private currentSessionEventsCounter = 0;
   private counter = 0;
 
   constructor() {
@@ -55,6 +57,8 @@ export class MysteriousCrawlerConsumer {
     const { rawEvents, mapping } = data;
 
     if(rawEvents.length === 1 && rawEvents[0] === '') {
+      this.currentSessionEventsCounter = 0;
+      sportEventRepository.moveToArchive();
       const message = `Sport event is finished. Awaiting for another one. Data: [${JSON.stringify(data)}]`;
       logger('log', context, message);
       return false;
@@ -70,6 +74,9 @@ export class MysteriousCrawlerConsumer {
   }
 
   private iterateOverEvents(data: MysteriousCrawlerRawModel, context: string): void {
+      const shouldUpdateArchive = this.shouldUpdateArchive(data.rawEvents.length);
+      const currentSessionEvents: SportEventModel[] = [];
+
       for(const rawEvent of data.rawEvents) {
         const model = this.process(rawEvent, data.mapping, context);
 
@@ -77,8 +84,28 @@ export class MysteriousCrawlerConsumer {
           return;
         }
 
-        // @TODO add to store
+        if(shouldUpdateArchive) {
+          currentSessionEvents.push(model);
+        }
+        
+        sportEventRepository.setOngoingEvent(model);
       }
+
+      if(shouldUpdateArchive) {
+        sportEventRepository.moveToArchive(currentSessionEvents);
+      }
+  }
+
+  private shouldUpdateArchive(currentSessionEvents: number): boolean {
+    if(this.currentSessionEventsCounter === 0) {
+      this.currentSessionEventsCounter = currentSessionEvents;
+      return false;
+    } else if (this.currentSessionEventsCounter > currentSessionEvents) {
+      this.currentSessionEventsCounter = currentSessionEvents;
+      return true
+    }
+
+    return false;
   }
 
   private process(rawEvent: string, mapping: Record<string, string>, context: string): SportEventModel {

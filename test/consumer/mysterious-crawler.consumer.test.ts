@@ -2,6 +2,7 @@ import { describe, beforeEach, vi, it, expect } from "vitest";
 import { MysteriousCrawlerConsumer } from "../../src/consumer";
 import { ArrayOps } from "../../src/common";
 import { SportEventBuilder } from "../../src/domain/model/sport-event.builder";
+import { sportEventRepository } from "../../src/domain/store";
 
 describe('MysteriousCrawlerConsumer', () => {
     let consumer: MysteriousCrawlerConsumer;
@@ -42,11 +43,13 @@ describe('MysteriousCrawlerConsumer', () => {
         it('should return false and log message when rawEvents is [""] - simulation is being restarted', () => {
             consoleErrorSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
             iterateSpy = vi.spyOn(consumer as any, 'iterateOverEvents');
+            const moveToArchiveSpy = vi.spyOn(sportEventRepository, 'moveToArchive');
             const result = (consumer as any).validateInput(mockData, context);
 
             expect(result).toBe(false);
             expect(consoleErrorSpy).toHaveBeenCalled();
             expect(iterateSpy).not.toHaveBeenCalled();
+            expect(moveToArchiveSpy).toHaveBeenCalled();
             expect(consoleErrorSpy.mock.calls[0][0]).toContain('Sport event is finished');
             expect(consoleErrorSpy.mock.calls[0][0]).toContain(context);
         });
