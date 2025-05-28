@@ -4,7 +4,7 @@ import express from 'express';
 import { crtConfig } from './config';
 import { clientRouter, unknownRouter } from './router';
 import { globalErrorHandlerMiddleware } from './middleware';
-import { mysteriousCrawlerConsumer } from '../consumer';
+import { MysteriousCrawlerConsumer } from '../consumer';
 
 const app = express();
   app
@@ -14,4 +14,4 @@ const app = express();
       .use(globalErrorHandlerMiddleware)
       .listen(crtConfig.port, () =>  console.log(`Server listening on port ${crtConfig.port}`));
 
-mysteriousCrawlerConsumer();
+new MysteriousCrawlerConsumer();

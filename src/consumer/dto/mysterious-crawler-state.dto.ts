@@ -1,3 +1,3 @@
-export class MysteriousCrawlerStateDto {
+export interface MysteriousCrawlerStateDto {
     odds: string
 }

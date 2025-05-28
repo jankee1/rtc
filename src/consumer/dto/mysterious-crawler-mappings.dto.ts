@@ -1,3 +1,3 @@
-export class MysteriousCrawlerMappingsDto {
+export interface MysteriousCrawlerMappingsDto {
     mappings: string;
 }
