@@ -6,9 +6,7 @@ export class SportEventRepository {
     private dbSet = DbSet.getInstance();
 
     getCurrentState(): SportEventModel[] {
-        const pre = this.dbSet.getEventsByStatus(EventStatusEnum.PRE);
-        const live = this.dbSet.getEventsByStatus(EventStatusEnum.LIVE);
-
+        const {pre, live} = this.getCurrent();
         return Array.from(pre.values()).concat(Array.from(live.values()));
     }
 
@@ -21,17 +19,20 @@ export class SportEventRepository {
         }
     }
 
-    moveToArchive(events: SportEventModel[] = []): void {
-        const live = this.dbSet.getEventsByStatus(EventStatusEnum.LIVE);
+    moveToArchive(event: SportEventModel): void {
+        this.dbSet.setEventByStatus(EventStatusEnum.REMOVED, event);
+        this.dbSet.deleteEventByStatusAndId(EventStatusEnum.LIVE, event.id);
+    }
 
-        for(const event of live.values()) {
-            if(events.length === 0) {
-                this.dbSet.setEventByStatus(EventStatusEnum.REMOVED, event);
-                this.dbSet.deleteEventByStatusAndId(EventStatusEnum.LIVE, event.id);
-            } else if (!events.find(e => e.id === event.id)) {
-                this.dbSet.setEventByStatus(EventStatusEnum.REMOVED, event);
-                this.dbSet.deleteEventByStatusAndId(EventStatusEnum.LIVE, event.id);
-            }
+    getCurrentEvent(id: string): SportEventModel {
+        const {pre, live} = this.getCurrent();
+        return pre.get(id) ?? live.get(id);
+    }
+
+    private getCurrent(): { pre: Map<string, SportEventModel>; live: Map<string, SportEventModel>} {
+        return {
+            pre: this.dbSet.getEventsByStatus(EventStatusEnum.PRE),
+            live: this.dbSet.getEventsByStatus(EventStatusEnum.LIVE) 
         }
     }
 }

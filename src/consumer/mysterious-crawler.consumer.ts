@@ -3,10 +3,11 @@ import { mysteriousCrawlerConfig, requestConfig } from "./config";
 import { MysteriousCrawlerMappingsDto, MysteriousCrawlerStateDto } from "./dto";
 import { SportEventBuilder } from "../domain/model/sport-event.builder";
 import { parseMappings, sleep } from "./utils";
-import { ArrayOps, contextId, logger } from "../common";
-import { SportEventModel } from "../domain/model";
+import { contextId, logger } from "../common";
+import { ScoreModel, SportEventModel } from "../domain/model";
 import { MysteriousCrawlerRawModel } from "./model";
 import { sportEventRepository } from "../domain/store";
+import { EventStatusEnum, ScoreEnum } from "../domain/enum";
 
 export class MysteriousCrawlerConsumer {
   private currentSessionEventsCounter = 0;
@@ -30,8 +31,7 @@ export class MysteriousCrawlerConsumer {
       this.iterateOverEvents(data, context);
 
     } catch (err) {
-      const message = `Error fetching or processing data. Data: [${err?.stack || ''}]`;
-      logger('error', context, message);
+      logger('error', context, `Error fetching or processing data. Data: [${err?.stack || ''}]`);
     } finally {
       this.counter++;
       await sleep(1000);
@@ -48,25 +48,16 @@ export class MysteriousCrawlerConsumer {
     const mappingsDto = mappingsResponse.data as MysteriousCrawlerMappingsDto;
 
     return { 
-      rawEvents: stateDto?.odds?.split('\n') || [], 
+      rawEvents: stateDto?.odds?.split('\n')?.filter( el => el !== '' ) || [], 
       mapping: parseMappings(mappingsDto?.mappings || '') 
     };
   }
 
-  private validateInput(data: MysteriousCrawlerRawModel, context: string ) {
+  private validateInput(data: MysteriousCrawlerRawModel, context: string ): boolean {
     const { rawEvents, mapping } = data;
 
-    if(rawEvents.length === 1 && rawEvents[0] === '') {
-      this.currentSessionEventsCounter = 0;
-      sportEventRepository.moveToArchive();
-      const message = `Sport event is finished. Awaiting for another one. Data: [${JSON.stringify(data)}]`;
-      logger('log', context, message);
-      return false;
-    }
-
-    if(!ArrayOps.areElementsValid(rawEvents) || !Object.keys(mapping).length) {
-      const message = `Invalid data received. Data: [${JSON.stringify(data)})}]`;
-      logger('error', context, message);
+    if(!Array.isArray(rawEvents) || !Object.keys(mapping).length) {
+      logger('error', context, `Invalid data received. Data: [${JSON.stringify(data)})}]`);
       return false;
     }
 
@@ -75,24 +66,35 @@ export class MysteriousCrawlerConsumer {
 
   private iterateOverEvents(data: MysteriousCrawlerRawModel, context: string): void {
       const shouldUpdateArchive = this.shouldUpdateArchive(data.rawEvents.length);
+      const currentState = sportEventRepository.getCurrentState();
       const currentSessionEvents: SportEventModel[] = [];
 
+      if(!data.rawEvents.length) {
+        this.currentSessionEventsCounter = 0;
+        logger('log', context, `Sport event is finished. Awaiting for another one. Data: [${JSON.stringify(data)}]`);
+        this.moveToArchive(context, currentState, currentSessionEvents)
+        return;
+      }
+
       for(const rawEvent of data.rawEvents) {
-        const model = this.process(rawEvent, data.mapping, context);
+        const model = this.createModel(rawEvent, data.mapping, context);
 
         if(!model) {
           return;
         }
 
         if(shouldUpdateArchive) {
+          model.sportEventStatus = EventStatusEnum.REMOVED;
           currentSessionEvents.push(model);
         }
-        
+
+        this.logChanges(context, model);
+
         sportEventRepository.setOngoingEvent(model);
       }
 
       if(shouldUpdateArchive) {
-        sportEventRepository.moveToArchive(currentSessionEvents);
+        this.moveToArchive(context, currentState, currentSessionEvents)
       }
   }
 
@@ -108,25 +110,56 @@ export class MysteriousCrawlerConsumer {
     return false;
   }
 
-  private process(rawEvent: string, mapping: Record<string, string>, context: string): SportEventModel {
+  private createModel(rawEvent: string, mapping: Record<string, string>, context: string): SportEventModel {
       const builder = new SportEventBuilder(mapping, rawEvent.split(','));
 
       builder.setBaseProperties();
 
       if (!builder.isValid()) {
-        const message = `Invalid base properties for event. Data [${rawEvent}]`;
-        logger('error', context, message);
+        logger('error', context, `Invalid base properties for event. Data [${rawEvent}]`);
         return;
       }
 
       builder.setScoreProperties();
 
       if (!builder.isValid()) {
-        const message = `Invalid score properties for event. Data [${rawEvent}]`;
-        logger('error', context, message);
+        logger('error', context, `Invalid score properties for event. Data [${rawEvent}]`);
         return;
       }
 
       return builder.build();
+  }
+
+  private getCurrentScore(event: SportEventModel): ScoreModel {
+    return event?.scores?.find(s => s.period === ScoreEnum.CURRENT);
+  }
+
+  private moveToArchive(context: string, currentState: SportEventModel[], events: SportEventModel[]): void {
+    for(const event of currentState) {
+        if(events.length === 0 || !events.find(e => e.id === event.id)) {
+          logger('log', context, this.createLogMessage(event, this.getCurrentScore(event)));
+          event.sportEventStatus = EventStatusEnum.REMOVED;
+          sportEventRepository.moveToArchive(event);
+        }
+      }
+  }
+
+  private logChanges(context: string, model: SportEventModel): void {
+      const current = sportEventRepository.getCurrentEvent(model.id);
+      const currentScore = this.getCurrentScore(current);
+      const modelScore = this.getCurrentScore(model);
+      const statusChanged = model?.sportEventStatus !== current?.sportEventStatus;
+      const scoreChanged = JSON.stringify(modelScore) !== JSON.stringify(currentScore);
+
+      if (model?.sportEventStatus === EventStatusEnum.PRE || (statusChanged || scoreChanged) && modelScore && currentScore) {
+        logger('log', context, this.createLogMessage(current, currentScore, model, modelScore));
+      }
+  }
+
+  private createLogMessage(oldEvent: SportEventModel, oldScore: ScoreModel, newEvent?: SportEventModel, newScore?: ScoreModel): string {
+    const newEventStatus = newEvent?.sportEventStatus || EventStatusEnum.REMOVED;
+    const newHomeScore = newScore?.homeScore || oldScore?.homeScore;
+    const newAwayScore = newScore?.awayScore || oldScore?.awayScore;
+    return `[${oldEvent?.competition}] | Status: ${oldEvent?.sportEventStatus} -> ${newEventStatus} | Score: ${oldScore?.homeScore} - ${oldScore?.awayScore} -> ${newHomeScore} - ${newAwayScore}`;
   }
 }

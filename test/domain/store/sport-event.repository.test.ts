@@ -27,64 +27,15 @@ describe('SportEventRepository', () => {
 
   describe('getCurrentState', () => {
         it('should return both PRE and LIVE events', () => {
-            repo.setOngoingEvent(mockPreEvent);
-            repo.setOngoingEvent(mockLiveEvent);
+            repo.setOngoingEvent({...mockPreEvent});
+            repo.setOngoingEvent({...mockLiveEvent});
             const result = repo.getCurrentState();
 
             expect(result).toHaveLength(2);
             expect(result).toEqual(
-                expect.arrayContaining([expect.objectContaining(mockPreEvent), expect.objectContaining(mockLiveEvent)])
+                expect.arrayContaining([expect.objectContaining({...mockPreEvent}), expect.objectContaining({...mockLiveEvent})])
             );
         });
-    })
-
-  describe('moveToArchive', () => {
-    beforeEach(() => {
-        (DbSet as any).instance = undefined;
-        repo = new SportEventRepository();
-        (repo as any).dbSet = DbSet.getInstance();
-
-        repo.setOngoingEvent(mockLiveEvent);
-        repo.setOngoingEvent(mockLiveEvent2);
-    });
-
-    it('should move all LIVE events to REMOVED if no input is provided', () => {
-        repo.moveToArchive();
-
-        const liveEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.LIVE);
-        const removedEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.REMOVED);
-
-        expect(liveEvents.size).toBe(0);
-        expect(removedEvents.size).toBe(2);
-        expect(Array.from(removedEvents.values())).toEqual(
-        expect.arrayContaining([
-            expect.objectContaining({ id: '2' }),
-            expect.objectContaining({ id: '3' }),
-        ])
-        );
-    });
-
-    it('should only archive LIVE events that are not in the input list', () => {
-        repo.moveToArchive([mockLiveEvent]);
-
-        const liveEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.LIVE);
-        const removedEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.REMOVED);
-
-        expect(liveEvents.size).toBe(1);
-        expect(removedEvents.size).toBe(1);
-        expect(Array.from(liveEvents.values())).toEqual([expect.objectContaining({ id: '2' })]);
-        expect(Array.from(removedEvents.values())).toEqual([expect.objectContaining({ id: '3' })]);
-    });
-
-    it('should not remove anything if all live events are included in input list', () => {
-        repo.moveToArchive([mockLiveEvent, mockLiveEvent2]);
-
-        const liveEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.LIVE);
-        const removedEvents = (repo as any).dbSet.getEventsByStatus(EventStatusEnum.REMOVED);
-
-        expect(liveEvents.size).toBe(2);
-        expect(removedEvents.size).toBe(0);
-    });
     })
 
     describe('setOngoingEvent', () => {

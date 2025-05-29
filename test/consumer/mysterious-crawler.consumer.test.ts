@@ -1,8 +1,9 @@
 import { describe, beforeEach, vi, it, expect } from "vitest";
 import { MysteriousCrawlerConsumer } from "../../src/consumer";
-import { ArrayOps } from "../../src/common";
 import { SportEventBuilder } from "../../src/domain/model/sport-event.builder";
 import { sportEventRepository } from "../../src/domain/store";
+import { EventStatusEnum } from "../../src/domain/enum";
+import { SportEventModel, ScoreModel } from "../../src/domain/model";
 
 describe('MysteriousCrawlerConsumer', () => {
     let consumer: MysteriousCrawlerConsumer;
@@ -10,6 +11,23 @@ describe('MysteriousCrawlerConsumer', () => {
     const mapping = { key: 'value' };
     const context = 'test_context';
     const mockData = { rawEvents: [''], mapping };
+    const oldEvent: SportEventModel = {
+        id: '1',
+        sport: 'football',
+        competition: 'Premier League',
+        startTime: '2025-05-29T18:00:00Z',
+        homeCompetitor: 'Team A',
+        awayCompetitor: 'Team B',
+        sportEventStatus: EventStatusEnum.PRE,
+        scores: [],
+    };
+
+    const oldScore: ScoreModel = {
+        id: 's1',
+        period: '1H',
+        homeScore: '1',
+        awayScore: '0',
+    };
 
     beforeEach(() => {
         consumer = new MysteriousCrawlerConsumer();
@@ -39,20 +57,6 @@ describe('MysteriousCrawlerConsumer', () => {
             consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             iterateSpy = vi.spyOn(consumer as any, 'iterateOverEvents');
         });
-        
-        it('should return false and log message when rawEvents is [""] - simulation is being restarted', () => {
-            consoleErrorSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-            iterateSpy = vi.spyOn(consumer as any, 'iterateOverEvents');
-            const moveToArchiveSpy = vi.spyOn(sportEventRepository, 'moveToArchive');
-            const result = (consumer as any).validateInput(mockData, context);
-
-            expect(result).toBe(false);
-            expect(consoleErrorSpy).toHaveBeenCalled();
-            expect(iterateSpy).not.toHaveBeenCalled();
-            expect(moveToArchiveSpy).toHaveBeenCalled();
-            expect(consoleErrorSpy.mock.calls[0][0]).toContain('Sport event is finished');
-            expect(consoleErrorSpy.mock.calls[0][0]).toContain(context);
-        });
 
         it('should return false and log error when invalid input occurs', () => {
             const data = {
@@ -60,7 +64,7 @@ describe('MysteriousCrawlerConsumer', () => {
                 mapping,
             };
 
-            vi.spyOn(ArrayOps, 'areElementsValid').mockReturnValue(false);
+            vi.spyOn(Array, 'isArray').mockReturnValue(false);
             consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
             iterateSpy = vi.spyOn(consumer as any, 'iterateOverEvents');
             const result = (consumer as any).validateInput(data, context);
@@ -73,7 +77,7 @@ describe('MysteriousCrawlerConsumer', () => {
         });
     });
 
-    describe('process', () => {
+    describe('createModel', () => {
         let consoleErrorSpy: vi.SpyInstance;
         let isValidSpy: vi.SpyInstance;
         let setScorePropertiesSpy: vi.SpyInstance;
@@ -88,7 +92,7 @@ describe('MysteriousCrawlerConsumer', () => {
         it('should skip processing when builder has error', () => {
             isValidSpy = vi.spyOn(SportEventBuilder.prototype, 'isValid').mockReturnValue(false);
 
-            const result = (consumer as any).process(rawEvent, mapping, context);
+            const result = (consumer as any).createModel(rawEvent, mapping, context);
 
             expect(isValidSpy).toHaveBeenCalled();
             expect(setScorePropertiesSpy).not.toHaveBeenCalled();
@@ -101,13 +105,57 @@ describe('MysteriousCrawlerConsumer', () => {
                 .mockReturnValueOnce(true)
                 .mockReturnValueOnce(false);
 
-            const result = (consumer as any).process(rawEvent, mapping, context);
+            const result = (consumer as any).createModel(rawEvent, mapping, context);
 
             expect(setBasePropertiesSpy).toHaveBeenCalled();
             expect(setScorePropertiesSpy).toHaveBeenCalled();
             expect(isValidSpy).toHaveBeenCalledTimes(2);
             expect(consoleErrorSpy).toHaveBeenCalled();
             expect(result).toBeUndefined();
+        });
+    });
+
+    describe('createLogMessage', () => {
+        it('should return updated score and status with new event and score provided', () => {
+            const newEvent: SportEventModel = {
+                ...oldEvent,
+                sportEventStatus: EventStatusEnum.LIVE,
+            };
+
+            const newScore: ScoreModel = {
+                id: 's2',
+                period: 'FT',
+                homeScore: '2',
+                awayScore: '1',
+            };
+
+            const result = (consumer as any).createLogMessage(oldEvent, oldScore, newEvent, newScore);
+
+            expect(result).toBe(
+                `[Premier League] | Status: ${EventStatusEnum.PRE} -> ${EventStatusEnum.LIVE} | Score: 1 - 0 -> 2 - 1`
+            );
+        });
+    });
+
+    describe('createLogMessagelogChanges', () => {
+        let consoleLogSpy: vi.SpyInstance;
+
+        beforeEach(() => {
+            consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        });
+
+
+        it('should detect status change', () => {
+            const newEvent = {
+                ...oldEvent,
+                sportEventStatus: EventStatusEnum.LIVE
+            };
+
+            vi.spyOn(sportEventRepository, 'getCurrentEvent').mockReturnValue(newEvent);
+
+            (consumer as any).logChanges(context, oldEvent);
+
+            expect(consoleLogSpy).toHaveBeenCalled();
         });
     });
 });
