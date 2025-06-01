@@ -146,12 +146,17 @@ export class MysteriousCrawlerConsumer {
 
   private logChanges(context: string, model: SportEventModel): void {
       const current = sportEventRepository.getCurrentEvent(model.id);
+
+      if(!current || model?.sportEventStatus === EventStatusEnum.PRE && current?.sportEventStatus === EventStatusEnum.PRE) {
+        return;
+      }
+
       const currentScore = this.getCurrentScore(current);
       const modelScore = this.getCurrentScore(model);
       const statusChanged = model?.sportEventStatus !== current?.sportEventStatus;
-      const scoreChanged = JSON.stringify(modelScore) !== JSON.stringify(currentScore);
+      const scoreChanged = modelScore && currentScore && JSON.stringify(modelScore) !== JSON.stringify(currentScore);
 
-      if (model?.sportEventStatus === EventStatusEnum.PRE || (statusChanged || scoreChanged) && modelScore && currentScore) {
+      if (statusChanged || scoreChanged) {
         logger('log', context, this.createLogMessage(current, currentScore, model, modelScore));
       }
   }

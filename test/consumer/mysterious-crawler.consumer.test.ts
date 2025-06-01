@@ -157,5 +157,18 @@ describe('MysteriousCrawlerConsumer', () => {
 
             expect(consoleLogSpy).toHaveBeenCalled();
         });
+
+        it('should skip if both events have PRE status', () => {
+            const newEvent = {
+                ...oldEvent,
+                sportEventStatus: EventStatusEnum.PRE
+            };
+
+            vi.spyOn(sportEventRepository, 'getCurrentEvent').mockReturnValue(newEvent);
+
+            (consumer as any).logChanges(context, oldEvent);
+
+            expect(consoleLogSpy).not.toHaveBeenCalled();
+        });
     });
 });
